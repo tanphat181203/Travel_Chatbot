@@ -1,8 +1,8 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from .config import GOOGLE_API_KEY
-import logging
+import warnings
 
-logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore", category=UserWarning, module="langchain_google_genai")
 
 def get_llm():
     try:
@@ -12,10 +12,8 @@ def get_llm():
             temperature=0.1,
             convert_system_message_to_human=True
         )
-        logger.info("Gemini LLM initialized successfully.")
         return llm
     except Exception as e:
-        logger.error(f"Failed to initialize Gemini LLM: {e}")
         raise
 
 llm = get_llm()
