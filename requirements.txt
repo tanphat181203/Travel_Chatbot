@@ -9,3 +9,7 @@ python-dotenv==1.1.0
 dateparser==1.2.1
 pandas==2.2.3
 beautifulsoup4==4.13.4
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
