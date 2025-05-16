@@ -10,6 +10,9 @@ dateparser==1.2.1
 pandas==2.2.3
 beautifulsoup4==4.13.4
 fastapi==0.115.12
-uvicorn[standard]==0.34.2
+uvicorn==0.34.0
 python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
+sentence-transformers==4.0.2
+python-multipart==0.0.20
+pydantic==2.11.3

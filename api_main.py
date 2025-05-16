@@ -3,13 +3,14 @@ import sys
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone, timedelta
 import psycopg2
 from psycopg2 import pool as psycopg2_pool
 from jose import JWTError, jwt
 import uvicorn
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -17,12 +18,14 @@ try:
     from src.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, DB_ENDPOINT_ID, GOOGLE_API_KEY
     from src.database import conn_pool
     from src.graph_builder import graph_app
+    from src.embedding import embedding_model
     from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 except ImportError as e:
     print(f"Error importing from src: {e}. Using placeholders. API will likely fail at runtime until this is fixed.")
     DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, DB_ENDPOINT_ID, GOOGLE_API_KEY = [None]*7
     conn_pool = None
     graph_app = None
+    embedding_model = None
     class HumanMessage:
         def __init__(self, content):
             self.content = content
@@ -42,6 +45,14 @@ app = FastAPI(
 reusable_oauth2 = HTTPBearer(
     scheme_name="Bearer"
 )
+
+class EmbeddingRequest(BaseModel):
+    text: Union[str, List[str]]
+
+class EmbeddingResponse(BaseModel):
+    embeddings: List[List[float]]
+    model: str
+    dimensions: int
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
@@ -122,7 +133,7 @@ def save_interaction_to_history(db_conn, user_id: int, user_message: str, chatbo
         print(f"Error saving interaction to history for user_id {user_id}: {e}")
         db_conn.rollback()
 
-@app.post("/api/v1/chat/", response_model=ChatResponseOutput)
+@app.post("/api/chat/", response_model=ChatResponseOutput)
 async def chat_endpoint(payload: ChatMessageInput, current_user_id: int = Depends(get_current_user), db_conn = Depends(get_db_connection)):
     if graph_app is None:
         print("graph_app is None in chat_endpoint. Graph_builder module likely not initialized.")
@@ -174,3 +185,37 @@ async def chat_endpoint(payload: ChatMessageInput, current_user_id: int = Depend
         session_id=payload.session_id,
         timestamp=datetime.now(timezone.utc)
     )
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "message": "API is running"}
+
+@app.post("/api/embed", response_model=EmbeddingResponse)
+async def get_embedding(request: EmbeddingRequest):
+    if embedding_model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Embedding service not initialized. Check src.embedding module."
+        )
+
+    try:
+        embeddings = embedding_model.get_embedding(request.text)
+
+        return {
+            "embeddings": embeddings,
+            "model": embedding_model.model_name,
+            "dimensions": len(embeddings[0])
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating embeddings: {str(e)}"
+        )
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        if embedding_model:
+            embedding_model.load_model()
+    except Exception as e:
+        print(f"Failed to load embedding model on startup: {str(e)}")
